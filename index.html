@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess vs Stockfish</title>
+    <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="topbar">
+            <div class="controls-group">
+                <label>Play as:</label>
+                <select id="colorSelect">
+                    <option value="white" selected>White</option>
+                    <option value="black">Black</option>
+                </select>
+                <button id="applyColorBtn">Apply</button>
+            </div>
+            
+            <div class="controls-group">
+                <label>Clock (min):</label>
+                <input type="number" id="clockMinutes" value="5" min="1" max="60">
+                <button id="setClockBtn">Set</button>
+                <button id="pauseBtn">Pause</button>
+                <button id="resumeBtn">Resume</button>
+            </div>
+            
+            <div class="controls-group">
+                <button id="newGameBtn">New Game</button>
+                <button id="engineMoveBtn">Engine Move</button>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="board-section">
+                <div class="clock-container">
+                    <div id="topClock" class="clock">05:00</div>
+                </div>
+                <div id="chessboard" class="chessboard"></div>
+                <div class="clock-container">
+                    <div id="bottomClock" class="clock active">05:00</div>
+                </div>
+            </div>
+            
+            <div class="sidebar">
+                <div id="turnLabel" class="turn-label">Turn: White</div>
+                <div class="move-history">
+                    <h3>Moves</h3>
+                    <div id="moveList" class="move-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/assets/script.js"></script>
+</body>
+</html>
