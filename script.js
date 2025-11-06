@@ -1,322 +1,337 @@
-(function() {
-  'use strict';
-  
-  const API_BASE = '';
-  let currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-  let selectedSquare = null;
-  let legalMoves = [];
-  let playerColor = 'white';
-  let boardFlipped = false;
-  
-  const pieceSymbols = {
-      'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔',
-      'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚'
-  };
-  
-  function initBoard() {
-      const board = document.getElementById('chessboard');
-      board.innerHTML = '';
-      
-      const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-      const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
-      
-      if (boardFlipped) {
-          ranks.reverse();
-          files.reverse();
-      }
-      
-      for (let r = 0; r < 8; r++) {
-          for (let f = 0; f < 8; f++) {
-              const square = document.createElement('div');
-              const squareName = files[f] + ranks[r];
-              square.className = 'square ' + ((r + f) % 2 === 0 ? 'light' : 'dark');
-              square.dataset.square = squareName;
-              square.addEventListener('click', handleSquareClick);
-              board.appendChild(square);
-          }
-      }
-      
-      updateBoard();
-  }
-  
-  function updateBoard() {
-      const pieces = fenToPieces(currentFen);
-      const squares = document.querySelectorAll('.square');
-      
-      squares.forEach(square => {
-          const squareName = square.dataset.square;
-          square.textContent = pieces[squareName] || '';
-          square.classList.remove('selected', 'legal-move');
-      });
-      
-      if (selectedSquare) {
-          const selectedEl = document.querySelector(`[data-square="${selectedSquare}"]`);
-          if (selectedEl) {
-              selectedEl.classList.add('selected');
-          }
-          
-          const movesFromSelected = legalMoves.filter(m => m.startsWith(selectedSquare));
-          movesFromSelected.forEach(move => {
-              const toSquare = move.substring(2, 4);
-              const toEl = document.querySelector(`[data-square="${toSquare}"]`);
-              if (toEl) {
-                  toEl.classList.add('legal-move');
-              }
-          });
-      }
-  }
-  
-  function fenToPieces(fen) {
-      const pieces = {};
-      const parts = fen.split(' ');
-      const rows = parts[0].split('/');
-      const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-      
-      rows.forEach((row, rankIdx) => {
-          let fileIdx = 0;
-          for (let char of row) {
-              if (char >= '1' && char <= '8') {
-                  fileIdx += parseInt(char);
-              } else {
-                  const rank = 8 - rankIdx;
-                  const square = files[fileIdx] + rank;
-                  pieces[square] = pieceSymbols[char] || char;
-                  fileIdx++;
-              }
-          }
-      });
-      
-      return pieces;
-  }
-  
-  async function handleSquareClick(e) {
-      const clickedSquare = e.currentTarget.dataset.square;
-      
-      if (selectedSquare) {
-          const moveUci = selectedSquare + clickedSquare;
-          if (legalMoves.includes(moveUci) || legalMoves.some(m => m.startsWith(moveUci))) {
-              let promotion = null;
-              
-              // Check if pawn promotion
-              const movingPiece = fenToPieces(currentFen)[selectedSquare];
-              const fromRank = selectedSquare[1];
-              const toRank = clickedSquare[1];
-              if ((movingPiece === '♙' && fromRank === '7' && toRank === '8') ||
-                  (movingPiece === '♟' && fromRank === '2' && toRank === '1')) {
-                  promotion = prompt('Promote to (q/r/b/n):', 'q') || 'q';
-              }
-              
-              await makeMove(selectedSquare, clickedSquare, promotion);
-              selectedSquare = null;
-          } else {
-              // Check if clicking a piece of the same color
-              const clickedPiece = fenToPieces(currentFen)[clickedSquare];
-              if (clickedPiece && isPlayerPiece(clickedPiece)) {
-                  selectedSquare = clickedSquare;
-              } else {
-                  selectedSquare = null;
-              }
-          }
-      } else {
-          // Select piece if it belongs to player
-          const piece = fenToPieces(currentFen)[clickedSquare];
-          if (piece && isPlayerPiece(piece)) {
-              selectedSquare = clickedSquare;
-          }
-      }
-      
-      updateBoard();
-  }
-  
-  function isPlayerPiece(piece) {
-      const isWhitePiece = ['♙', '♘', '♗', '♖', '♕', '♔'].includes(piece);
-      return (playerColor === 'white' && isWhitePiece) || (playerColor === 'black' && !isWhitePiece);
-  }
-  
-  async function makeMove(fromSquare, toSquare, promotion) {
-      try {
-          const response = await fetch(`${API_BASE}/move`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                  from_square: fromSquare,
-                  to_square: toSquare,
-                  promotion: promotion
-              })
-          });
-          
-          if (!response.ok) {
-              const error = await response.json();
-              alert(error.detail || 'Invalid move');
-              return;
-          }
-          
-          const data = await response.json();
-          updateState(data);
-      } catch (err) {
-          console.error('Move error:', err);
-      }
-  }
-  
-  async function fetchState() {
-      try {
-          const response = await fetch(`${API_BASE}/state`);
-          const data = await response.json();
-          updateState(data);
-      } catch (err) {
-          console.error('State fetch error:', err);
-      }
-  }
-  
-  async function fetchBoard() {
-      try {
-          const response = await fetch(`${API_BASE}/board`);
-          const data = await response.json();
-          legalMoves = data.legal_moves || [];
-          updateState(data);
-      } catch (err) {
-          console.error('Board fetch error:', err);
-      }
-  }
-  
-  function updateState(data) {
-      currentFen = data.fen;
-      playerColor = data.player_color;
-      
-      // Update clocks
-      const whiteTime = formatTime(data.clocks.white);
-      const blackTime = formatTime(data.clocks.black);
-      
-      const topClock = document.getElementById('topClock');
-      const bottomClock = document.getElementById('bottomClock');
-      
-      if (boardFlipped) {
-          topClock.textContent = whiteTime;
-          bottomClock.textContent = blackTime;
-          topClock.classList.toggle('active', data.active_color === 'white');
-          bottomClock.classList.toggle('active', data.active_color === 'black');
-      } else {
-          topClock.textContent = blackTime;
-          bottomClock.textContent = whiteTime;
-          topClock.classList.toggle('active', data.active_color === 'black');
-          bottomClock.classList.toggle('active', data.active_color === 'white');
-      }
-      
-      // Update turn label
-      let turnText = `Turn: ${data.turn.charAt(0).toUpperCase() + data.turn.slice(1)}`;
-      if (data.is_check) turnText += ' (check)';
-      if (data.is_game_over && data.result) turnText = data.result;
-      document.getElementById('turnLabel').textContent = turnText;
-      
-      // Update move history
-      updateMoveHistory(data.move_history);
-      
-      updateBoard();
-  }
-  
-  function updateMoveHistory(moves) {
-      const moveList = document.getElementById('moveList');
-      moveList.innerHTML = '';
-      
-      for (let i = 0; i < moves.length; i += 2) {
-          const moveNum = Math.floor(i / 2) + 1;
-          const whiteMove = moves[i];
-          const blackMove = moves[i + 1] || '';
-          
-          const moveDiv = document.createElement('div');
-          moveDiv.className = 'move-pair';
-          moveDiv.textContent = `${moveNum}. ${whiteMove} ${blackMove}`;
-          moveList.appendChild(moveDiv);
-      }
-      
-      moveList.scrollTop = moveList.scrollHeight;
-  }
-  
-  function formatTime(seconds) {
-      const mins = Math.floor(seconds / 60);
-      const secs = seconds % 60;
-      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-  
-  // Event handlers
-  document.getElementById('applyColorBtn').addEventListener('click', async () => {
-      const color = document.getElementById('colorSelect').value;
-      try {
-          const response = await fetch(`${API_BASE}/set-player-color`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ color })
-          });
-          const data = await response.json();
-          boardFlipped = (color === 'black');
-          initBoard();
-          updateState(data);
-          await fetchBoard();
-      } catch (err) {
-          console.error('Color change error:', err);
-      }
-  });
-  
-  document.getElementById('setClockBtn').addEventListener('click', async () => {
-      const minutes = parseInt(document.getElementById('clockMinutes').value);
-      if (minutes < 1 || minutes > 60) {
-          alert('Minutes must be between 1 and 60');
-          return;
-      }
-      try {
-          const response = await fetch(`${API_BASE}/clock/set/${minutes}`, {
-              method: 'POST'
-          });
-          const data = await response.json();
-          updateState(data);
-      } catch (err) {
-          console.error('Clock set error:', err);
-      }
-  });
-  
-  document.getElementById('pauseBtn').addEventListener('click', async () => {
-      try {
-          await fetch(`${API_BASE}/clock/pause`, { method: 'POST' });
-      } catch (err) {
-          console.error('Pause error:', err);
-      }
-  });
-  
-  document.getElementById('resumeBtn').addEventListener('click', async () => {
-      try {
-          await fetch(`${API_BASE}/clock/resume`, { method: 'POST' });
-      } catch (err) {
-          console.error('Resume error:', err);
-      }
-  });
-  
-  document.getElementById('newGameBtn').addEventListener('click', async () => {
-      try {
-          const response = await fetch(`${API_BASE}/reset`);
-          const data = await response.json();
-          selectedSquare = null;
-          updateState(data);
-          await fetchBoard();
-      } catch (err) {
-          console.error('Reset error:', err);
-      }
-  });
-  
-  document.getElementById('engineMoveBtn').addEventListener('click', async () => {
-      try {
-          const response = await fetch(`${API_BASE}/engine-move`);
-          const data = await response.json();
-          updateState(data);
-          await fetchBoard();
-      } catch (err) {
-          console.error('Engine move error:', err);
-      }
-  });
-  
-  // Initialize
-  initBoard();
-  fetchBoard();
-  
-  // Poll state every 800ms
-  setInterval(fetchState, 800);
-})();
+// Frontend/script.js
+const PIECES = {
+    'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔',
+    'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚'
+};
+
+let gameState = null;
+let selectedSquare = null;
+let pendingPromotion = null;
+
+// Initialize board
+function initBoard() {
+    const board = document.getElementById('board');
+    board.innerHTML = '';
+    
+    for (let rank = 7; rank >= 0; rank--) {
+        for (let file = 0; file < 8; file++) {
+            const square = document.createElement('div');
+            square.className = 'square ' + ((rank + file) % 2 === 0 ? 'dark' : 'light');
+            square.dataset.square = fileRankToSquare(file, rank);
+            square.addEventListener('click', handleSquareClick);
+            board.appendChild(square);
+        }
+    }
+}
+
+function fileRankToSquare(file, rank) {
+    return String.fromCharCode(97 + file) + (rank + 1);
+}
+
+function squareToFileRank(square) {
+    return {
+        file: square.charCodeAt(0) - 97,
+        rank: parseInt(square[1]) - 1
+    };
+}
+
+function updateBoard() {
+    if (!gameState) return;
+    
+    const squares = document.querySelectorAll('.square');
+    const fen = gameState.fen.split(' ')[0];
+    const rows = fen.split('/');
+    
+    let squareIndex = 0;
+    for (let rank = 7; rank >= 0; rank--) {
+        const row = rows[7 - rank];
+        let file = 0;
+        
+        for (let char of row) {
+            if (char >= '1' && char <= '8') {
+                const emptySquares = parseInt(char);
+                for (let i = 0; i < emptySquares; i++) {
+                    squares[squareIndex].textContent = '';
+                    squares[squareIndex].classList.remove('selected', 'legal-move');
+                    squareIndex++;
+                    file++;
+                }
+            } else {
+                squares[squareIndex].textContent = PIECES[char] || '';
+                squares[squareIndex].classList.remove('selected', 'legal-move');
+                squareIndex++;
+                file++;
+            }
+        }
+    }
+    
+    // Highlight selected square
+    if (selectedSquare) {
+        const square = document.querySelector(`[data-square="${selectedSquare}"]`);
+        if (square) square.classList.add('selected');
+        
+        // Show legal moves from selected square
+        gameState.legal_moves.forEach(uci => {
+            if (uci.startsWith(selectedSquare)) {
+                const toSquare = uci.substring(2, 4);
+                const square = document.querySelector(`[data-square="${toSquare}"]`);
+                if (square) square.classList.add('legal-move');
+            }
+        });
+    }
+}
+
+function updateClocks() {
+    if (!gameState) return;
+    
+    const whiteMinutes = Math.floor(gameState.clocks.white / 60);
+    const whiteSeconds = gameState.clocks.white % 60;
+    const blackMinutes = Math.floor(gameState.clocks.black / 60);
+    const blackSeconds = gameState.clocks.black % 60;
+    
+    document.getElementById('whiteClock').textContent = 
+        `${String(whiteMinutes).padStart(2, '0')}:${String(whiteSeconds).padStart(2, '0')}`;
+    document.getElementById('blackClock').textContent = 
+        `${String(blackMinutes).padStart(2, '0')}:${String(blackSeconds).padStart(2, '0')}`;
+    
+    // Highlight active clock
+    document.querySelector('.white-clock').classList.toggle('active', gameState.active_color === 'white');
+    document.querySelector('.black-clock').classList.toggle('active', gameState.active_color === 'black');
+}
+
+function updateTurnIndicator() {
+    if (!gameState) return;
+    
+    let text = `Turn: ${gameState.turn.charAt(0).toUpperCase() + gameState.turn.slice(1)}`;
+    if (gameState.is_check) {
+        text += ' (Check!)';
+    }
+    if (gameState.is_game_over) {
+        text = `Game Over - Result: ${gameState.result || 'Draw'}`;
+    }
+    
+    document.getElementById('turnIndicator').textContent = text;
+}
+
+function updateMoveHistory() {
+    if (!gameState) return;
+    
+    const moveList = document.getElementById('moveList');
+    moveList.innerHTML = '';
+    
+    for (let i = 0; i < gameState.move_history.length; i += 2) {
+        const moveNum = Math.floor(i / 2) + 1;
+        const whiteMove = gameState.move_history[i];
+        const blackMove = gameState.move_history[i + 1] || '';
+        
+        const moveDiv = document.createElement('div');
+        moveDiv.className = 'move-pair';
+        moveDiv.textContent = `${moveNum}. ${whiteMove} ${blackMove}`;
+        moveList.appendChild(moveDiv);
+    }
+    
+    moveList.scrollTop = moveList.scrollHeight;
+}
+
+function updateCapturedPieces() {
+    if (!gameState) return;
+    
+    const capturedWhite = document.getElementById('capturedWhite');
+    const capturedBlack = document.getElementById('capturedBlack');
+    
+    capturedWhite.textContent = gameState.captured.white.map(p => PIECES[p]).join(' ');
+    capturedBlack.textContent = gameState.captured.black.map(p => PIECES[p]).join(' ');
+}
+
+async function fetchState() {
+    try {
+        const response = await fetch('/state');
+        gameState = await response.json();
+        updateBoard();
+        updateClocks();
+        updateTurnIndicator();
+        updateMoveHistory();
+        updateCapturedPieces();
+    } catch (error) {
+        console.error('Error fetching state:', error);
+    }
+}
+
+async function makeMove(fromSquare, toSquare, promotion = null) {
+    try {
+        const response = await fetch('/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                from_square: fromSquare,
+                to_square: toSquare,
+                promotion: promotion
+            })
+        });
+        
+        if (response.ok) {
+            gameState = await response.json();
+            selectedSquare = null;
+            updateBoard();
+            updateClocks();
+            updateTurnIndicator();
+            updateMoveHistory();
+            updateCapturedPieces();
+        } else {
+            const error = await response.json();
+            console.error('Invalid move:', error.detail);
+            selectedSquare = null;
+            updateBoard();
+        }
+    } catch (error) {
+        console.error('Error making move:', error);
+        selectedSquare = null;
+        updateBoard();
+    }
+}
+
+function handleSquareClick(event) {
+    if (!gameState || gameState.is_game_over) return;
+    
+    const clickedSquare = event.currentTarget.dataset.square;
+    const piece = event.currentTarget.textContent;
+    
+    if (selectedSquare) {
+        // Try to make a move
+        if (clickedSquare === selectedSquare) {
+            // Deselect
+            selectedSquare = null;
+            updateBoard();
+        } else {
+            // Check if this is a pawn promotion move
+            const fromPiece = document.querySelector(`[data-square="${selectedSquare}"]`).textContent;
+            const isPawn = fromPiece === '♙' || fromPiece === '♟';
+            const toRank = parseInt(clickedSquare[1]);
+            
+            if (isPawn && (toRank === 8 || toRank === 1)) {
+                // Show promotion modal
+                pendingPromotion = { from: selectedSquare, to: clickedSquare };
+                showPromotionModal();
+            } else {
+                makeMove(selectedSquare, clickedSquare);
+            }
+        }
+    } else {
+        // Select a piece
+        if (piece && gameState.turn === gameState.player_color) {
+            const isPieceWhite = piece.charCodeAt(0) <= 9823; // Unicode white pieces
+            const isPlayerWhite = gameState.player_color === 'white';
+            
+            if (isPieceWhite === isPlayerWhite) {
+                selectedSquare = clickedSquare;
+                updateBoard();
+            }
+        }
+    }
+}
+
+function showPromotionModal() {
+    document.getElementById('promotionModal').style.display = 'flex';
+}
+
+function hidePromotionModal() {
+    document.getElementById('promotionModal').style.display = 'none';
+}
+
+// Event listeners
+document.getElementById('applyColor').addEventListener('click', async () => {
+    const color = document.getElementById('colorSelect').value;
+    try {
+        const response = await fetch('/set-player-color', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ color })
+        });
+        gameState = await response.json();
+        selectedSquare = null;
+        updateBoard();
+        updateClocks();
+        updateTurnIndicator();
+        updateMoveHistory();
+        updateCapturedPieces();
+    } catch (error) {
+        console.error('Error setting color:', error);
+    }
+});
+
+document.getElementById('setTime').addEventListener('click', async () => {
+    const minutes = parseInt(document.getElementById('clockMinutes').value);
+    try {
+        const response = await fetch(`/clock/set/${minutes}`, { method: 'POST' });
+        gameState = await response.json();
+        updateClocks();
+    } catch (error) {
+        console.error('Error setting time:', error);
+    }
+});
+
+document.getElementById('pauseBtn').addEventListener('click', async () => {
+    try {
+        const response = await fetch('/clock/pause', { method: 'POST' });
+        gameState = await response.json();
+        updateClocks();
+    } catch (error) {
+        console.error('Error pausing:', error);
+    }
+});
+
+document.getElementById('resumeBtn').addEventListener('click', async () => {
+    try {
+        const response = await fetch('/clock/resume', { method: 'POST' });
+        gameState = await response.json();
+        updateClocks();
+    } catch (error) {
+        console.error('Error resuming:', error);
+    }
+});
+
+document.getElementById('newGame').addEventListener('click', async () => {
+    try {
+        const response = await fetch('/reset');
+        gameState = await response.json();
+        selectedSquare = null;
+        updateBoard();
+        updateClocks();
+        updateTurnIndicator();
+        updateMoveHistory();
+        updateCapturedPieces();
+    } catch (error) {
+        console.error('Error resetting:', error);
+    }
+});
+
+document.getElementById('engineMove').addEventListener('click', async () => {
+    try {
+        const response = await fetch('/engine-move');
+        gameState = await response.json();
+        updateBoard();
+        updateClocks();
+        updateTurnIndicator();
+        updateMoveHistory();
+        updateCapturedPieces();
+    } catch (error) {
+        console.error('Error getting engine move:', error);
+    }
+});
+
+// Promotion modal handlers
+document.querySelectorAll('.promotion-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const piece = btn.dataset.piece;
+        hidePromotionModal();
+        if (pendingPromotion) {
+            makeMove(pendingPromotion.from, pendingPromotion.to, piece);
+            pendingPromotion = null;
+        }
+    });
+});
+
+// Initialize and start polling
+initBoard();
+fetchState();
+setInterval(fetchState, 800);
