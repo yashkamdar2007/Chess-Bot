@@ -20,8 +20,17 @@ class EnginePlayer:
         if engine_path:
             paths_to_try = [engine_path]
         else:
+            # Check for locally installed Stockfish first
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            local_stockfish = os.path.join(script_dir, "bin", "stockfish")
+            local_stockfish_exe = os.path.join(script_dir, "bin", "stockfish.exe")
+            
             paths_to_try = [
+                local_stockfish,
+                local_stockfish_exe,
                 "/opt/homebrew/bin/stockfish",
+                "/usr/local/bin/stockfish",
+                "/usr/bin/stockfish",
                 os.environ.get("STOCKFISH_EXECUTABLE", ""),
                 shutil.which("stockfish") or ""
             ]

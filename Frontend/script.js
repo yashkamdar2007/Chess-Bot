@@ -7,6 +7,7 @@ const PIECES = {
 let gameState = null;
 let selectedSquare = null;
 let pendingPromotion = null;
+let boardFlipped = false;
 
 // Initialize board
 function initBoard() {
@@ -35,8 +36,26 @@ function squareToFileRank(square) {
     };
 }
 
+function flipSquare(square) {
+    // Transform square coordinates for 180-degree board flip
+    // a1 (0,0) -> h8 (7,7), h8 (7,7) -> a1 (0,0)
+    const { file, rank } = squareToFileRank(square);
+    const flippedFile = 7 - file;
+    const flippedRank = 7 - rank;
+    return fileRankToSquare(flippedFile, flippedRank);
+}
+
 function updateBoard() {
     if (!gameState) return;
+    
+    // Update board flip state
+    boardFlipped = gameState.player_color === 'black';
+    const board = document.getElementById('board');
+    if (boardFlipped) {
+        board.style.transform = 'rotate(180deg)';
+    } else {
+        board.style.transform = 'rotate(0deg)';
+    }
     
     const squares = document.querySelectorAll('.square');
     const fen = gameState.fen.split(' ')[0];
@@ -51,14 +70,28 @@ function updateBoard() {
             if (char >= '1' && char <= '8') {
                 const emptySquares = parseInt(char);
                 for (let i = 0; i < emptySquares; i++) {
-                    squares[squareIndex].textContent = '';
-                    squares[squareIndex].classList.remove('selected', 'legal-move');
+                    const square = squares[squareIndex];
+                    square.textContent = '';
+                    square.classList.remove('selected', 'legal-move');
+                    // Rotate pieces 180deg when board is flipped so they appear right-side up
+                    if (boardFlipped) {
+                        square.style.transform = 'rotate(180deg)';
+                    } else {
+                        square.style.transform = '';
+                    }
                     squareIndex++;
                     file++;
                 }
             } else {
-                squares[squareIndex].textContent = PIECES[char] || '';
-                squares[squareIndex].classList.remove('selected', 'legal-move');
+                const square = squares[squareIndex];
+                square.textContent = PIECES[char] || '';
+                square.classList.remove('selected', 'legal-move');
+                // Rotate pieces 180deg when board is flipped so they appear right-side up
+                if (boardFlipped) {
+                    square.style.transform = 'rotate(180deg)';
+                } else {
+                    square.style.transform = '';
+                }
                 squareIndex++;
                 file++;
             }
@@ -67,6 +100,7 @@ function updateBoard() {
     
     // Highlight selected square
     if (selectedSquare) {
+        // selectedSquare is in standard chess notation, same as data-square attributes
         const square = document.querySelector(`[data-square="${selectedSquare}"]`);
         if (square) square.classList.add('selected');
         
@@ -74,6 +108,7 @@ function updateBoard() {
         gameState.legal_moves.forEach(uci => {
             if (uci.startsWith(selectedSquare)) {
                 const toSquare = uci.substring(2, 4);
+                // toSquare is in standard chess notation, same as data-square attributes
                 const square = document.querySelector(`[data-square="${toSquare}"]`);
                 if (square) square.classList.add('legal-move');
             }
@@ -193,6 +228,9 @@ async function makeMove(fromSquare, toSquare, promotion = null) {
 function handleSquareClick(event) {
     if (!gameState || gameState.is_game_over) return;
     
+    // data-square attributes are always in standard chess notation
+    // CSS rotation only changes visual position, not the data-square value
+    // So we use the data-square value directly - no transformation needed
     const clickedSquare = event.currentTarget.dataset.square;
     const piece = event.currentTarget.textContent;
     
@@ -204,11 +242,20 @@ function handleSquareClick(event) {
             updateBoard();
         } else {
             // Check if this is a pawn promotion move
+            // selectedSquare is in standard chess notation, same as data-square attributes
             const fromPiece = document.querySelector(`[data-square="${selectedSquare}"]`).textContent;
             const isPawn = fromPiece === '♙' || fromPiece === '♟';
+            const fromRank = parseInt(selectedSquare[1]);
             const toRank = parseInt(clickedSquare[1]);
             
-            if (isPawn && (toRank === 8 || toRank === 1)) {
+            // White pawn promotes from rank 7 to rank 8, black pawn from rank 2 to rank 1
+            const isWhitePawn = fromPiece === '♙';
+            const shouldPromote = isPawn && (
+                (isWhitePawn && fromRank === 7 && toRank === 8) ||
+                (!isWhitePawn && fromRank === 2 && toRank === 1)
+            );
+            
+            if (shouldPromote) {
                 // Show promotion modal
                 pendingPromotion = { from: selectedSquare, to: clickedSquare };
                 showPromotionModal();
@@ -219,9 +266,12 @@ function handleSquareClick(event) {
     } else {
         // Select a piece
         if (piece && gameState.turn === gameState.player_color) {
-            const isPieceWhite = piece.charCodeAt(0) <= 9823; // Unicode white pieces
+            // Use direct comparison with known white pieces instead of Unicode check
+            const whitePieces = ['♙', '♘', '♗', '♖', '♕', '♔'];
+            const isPieceWhite = whitePieces.includes(piece);
             const isPlayerWhite = gameState.player_color === 'white';
             
+            // Check if the piece belongs to the player
             if (isPieceWhite === isPlayerWhite) {
                 selectedSquare = clickedSquare;
                 updateBoard();
@@ -231,6 +281,19 @@ function handleSquareClick(event) {
 }
 
 function showPromotionModal() {
+    // Update promotion buttons based on player color
+    const isPlayerWhite = gameState && gameState.player_color === 'white';
+    const promotionPieces = isPlayerWhite 
+        ? { 'q': '♕', 'r': '♖', 'b': '♗', 'n': '♘' }
+        : { 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞' };
+    
+    document.querySelectorAll('.promotion-btn').forEach(btn => {
+        const piece = btn.dataset.piece;
+        const pieceSymbol = promotionPieces[piece];
+        const pieceName = piece === 'q' ? 'Queen' : piece === 'r' ? 'Rook' : piece === 'b' ? 'Bishop' : 'Knight';
+        btn.textContent = `${pieceSymbol} ${pieceName}`;
+    });
+    
     document.getElementById('promotionModal').style.display = 'flex';
 }
 

@@ -125,6 +125,7 @@ body {
     border: 3px solid #333;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     margin: 0 auto;
+    transition: transform 0.3s;
 }
 
 .square {
@@ -135,7 +136,7 @@ body {
     justify-content: center;
     font-size: 40px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.2s, transform 0.3s;
     user-select: none;
 }
 
