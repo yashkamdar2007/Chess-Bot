@@ -36,8 +36,6 @@ All moves, logic, and engine communication are handled through a Python FastAPI 
 ---
 
 ## 📁 Project Structure
-
-Chess-Bot/
 │
 ├── Backend/
 │ ├── app.py # FastAPI server
@@ -54,8 +52,8 @@ Chess-Bot/
 │
 └── README.md # Project documentation
 
-yaml
-Copy code
+
+
 
 ---
 
